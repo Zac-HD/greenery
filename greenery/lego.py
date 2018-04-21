@@ -32,6 +32,9 @@
 	pattern, these procedures can drastically simplify a regex structure for
 	readability. They're also pretty extensible.
 '''
+import sre_parse
+import sre_constants
+
 from greenery import fsm
 
 class nomatch(Exception):
@@ -65,7 +68,78 @@ def parse(string):
 		Parse a full string and return a lego piece. Fail if the whole string
 		wasn't parsed
 	'''
-	return pattern.parse(string)
+	try:
+	    return _sre_to_lego(sre_parse.parse(string)).reduce()
+	except (ValueError, sre_constants.error):
+	    return pattern.parse(string).reduce()
+
+def _sre_to_lego(lsp):
+    '''
+        Convert a string or sre_parse.parse tree to a lego pattern, using
+        Python's sre_parse module to do the hard work.
+    '''
+    if isinstance(lsp, (list, sre_parse.SubPattern)):
+        # A sequence of parts: recur on each and concatenate
+        return conc(*map(_sre_to_lego, lsp))
+
+    # OK, now we're dealing with some specific part of a pattern
+    assert isinstance(lsp, tuple) and len(lsp) == 2, lsp
+    code, lsp = lsp
+
+    if code == sre_constants.LITERAL:
+        return charclass(chr(lsp))
+
+    if code == sre_constants.NOT_LITERAL:
+        return ~charclass(chr(lsp))
+
+    if code == sre_constants.ANY:
+        assert lsp is None, lsp
+        return ~charclass()
+
+    if code == sre_constants.CATEGORY:
+        return {
+            sre_constants.CATEGORY_DIGIT: d,
+            sre_constants.CATEGORY_SPACE: s,
+            sre_constants.CATEGORY_WORD: w,
+            sre_constants.CATEGORY_NOT_DIGIT: D,
+            sre_constants.CATEGORY_NOT_SPACE: S,
+            sre_constants.CATEGORY_NOT_WORD: W,
+        }[lsp]
+
+    if code == sre_constants.IN:
+        val, negate = charclass(), False
+        for charset_code, charset_value in lsp:
+            if charset_code == sre_constants.NEGATE:
+                negate = True
+            elif charset_code == sre_constants.LITERAL:
+                val |= charclass(chr(charset_value))
+            elif charset_code == sre_constants.RANGE:
+                low, high = charset_value
+                for char_code in range(low, high + 1):
+                    val |= charclass(chr(char_code))
+            elif charset_code == sre_constants.CATEGORY:
+                val |= _sre_to_lego((charset_code, charset_value))
+        return ~val if negate else val
+
+    if code in (sre_constants.MIN_REPEAT, sre_constants.MAX_REPEAT):
+        lo, hi, lsp = lsp
+        if hi == sre_constants.MAXREPEAT:
+            hi = None
+        return mult(_sre_to_lego(lsp), multiplier(bound(lo), bound(hi)))
+
+    if code == sre_constants.BRANCH:
+        nn, lsp = lsp
+        assert nn is None, (nn, lsp)
+        return pattern(*map(_sre_to_lego, lsp))
+
+    if code == sre_constants.SUBPATTERN:
+        # Ignore group ID (errors if referenced) and ignore flags (if present)
+        return _sre_to_lego(lsp[-1])
+
+    if code in (sre_constants.AT, sre_constants.ASSERT, sre_constants.ASSERT_NOT,
+                sre_constants.GROUPREF, sre_constants.GROUPREF_EXISTS):
+        raise ValueError('{} is not part of a regular language'.format(code))
+    raise ValueError('Unhandled node type {} of {!r}'.format(code, lsp))
 
 def from_fsm(f):
 	'''

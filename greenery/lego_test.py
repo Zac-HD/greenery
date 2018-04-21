@@ -177,7 +177,7 @@ def test_pattern_parsing():
 	parse("(:abc)") # should give no problems
 
 	# Named groups
-	assert pattern.parse("(?P<ng1>abc)") == parse("(abc)")
+	assert pattern.parse("(?P<ng1>abc)").reduce() == parse("(abc)")
 
 ################################################################################
 # repr() tests
@@ -304,7 +304,7 @@ def test_pattern_str():
 def test_parse_str_round_trip():
 	assert str(parse("a.b")) == "a.b" # not "a[ab]b"
 	assert str(parse("\\d{4}")) == "\\d{4}"
-	assert str(parse("a.b()()")) == "a.b()()"
+	assert str(parse("a.b()()")) == "a.b" # discard empty groups
 
 ################################################################################
 # Test to_fsm() and alphabet-related functionality
