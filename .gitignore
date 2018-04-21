@@ -145,6 +145,8 @@ var
 sdist
 develop-eggs
 .installed.cfg
+.pytest*
+.hypothesis
 
 # Installer logs
 pip-log.txt

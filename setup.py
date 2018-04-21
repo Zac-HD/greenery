@@ -5,7 +5,7 @@ from greenery import __version__
 setup(
 	name = "greenery",
 	version = __version__,
-	tests_require = [ "pytest" ],
+	tests_require = ["pytest", "hypothesis"],
 	packages = [ "greenery" ],
 	package_dir = { "greenery": "greenery" },
 	author = "qntm",
