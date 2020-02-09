@@ -1,4 +1,2 @@
-# -*- coding: utf-8 -*-
-
 __all__ = ["fsm", "lego"]
-from ._version import __version__
+__version__ = "4.0"
