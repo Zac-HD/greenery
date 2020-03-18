@@ -1,4 +1,5 @@
 import sys
+
 from greenery.lego import lego, parse
 
 regexes = sys.argv[1:]

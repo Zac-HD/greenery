@@ -504,6 +504,11 @@ def test_empty(a, b):
 
 def test_equivalent(a, b):
     assert (a | b).equivalent(b | a)
+    assert (a | b) == (b | a)
+
+
+def test_fsm_repr(a):
+    assert isinstance(repr(a), str)
 
 
 def test_dead_default():

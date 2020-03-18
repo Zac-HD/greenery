@@ -30,14 +30,30 @@ pattern. While there is no such thing as a canonical form for a given regex
 pattern, these procedures can drastically simplify a regex structure for
 readability. They're also pretty extensible.
 """
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    FrozenSet,
+    Iterable,
+    NoReturn,
+    Optional,
+    Tuple,
+    Type,
+    TypeVar,
+    Union,
+)
+
 from greenery import fsm
+
+T = TypeVar("T")
 
 
 class nomatch(Exception):
     """Thrown when parsing fails. Almost always caught and almost never fatal"""
 
 
-def reduce_after(method):
+def reduce_after(method: Callable[..., "lego"]) -> Callable[..., "lego"]:
     """reduce() the result of this method call (unless you already reduced it)."""
 
     def new_method(self, *args, **kwargs):
@@ -49,7 +65,7 @@ def reduce_after(method):
     return new_method
 
 
-def call_fsm(method):
+def call_fsm(method: Callable[..., "lego"]) -> Callable[..., "lego"]:
     """
     Take a method which acts on 0 or more regular expression objects... return a
     new method which simply converts them all to FSMs, calls the FSM method
@@ -58,14 +74,14 @@ def call_fsm(method):
     """
     fsm_method = getattr(fsm.fsm, method.__name__)
 
-    def new_method(*legos):
-        alphabet = set().union(*[lego.alphabet() for lego in legos])
+    def new_method(*legos: "lego") -> "lego":
+        alphabet = set().union(*[lego.alphabet() for lego in legos])  # type: ignore
         return from_fsm(fsm_method(*[lego.to_fsm(alphabet) for lego in legos]))
 
     return new_method
 
 
-def parse(string):
+def parse(string: str) -> "lego":
     """
     Parse a full string and return a lego piece. Fail if the whole string
     wasn't parsed
@@ -73,7 +89,7 @@ def parse(string):
     return pattern.parse(string)
 
 
-def from_fsm(f):
+def from_fsm(f: fsm.fsm) -> "lego":
     """
     Turn the supplied finite state machine into a `lego` object. This is
     accomplished using the Brzozowski algebraic method.
@@ -115,7 +131,7 @@ def from_fsm(f):
         i += 1
 
     # Our system of equations is represented like so:
-    brz = {}
+    brz: Dict[fsm.State, Dict[object, "lego"]] = {}
     for a in f.states:
         brz[a] = {}
         for b in f.states | {outside}:
@@ -165,14 +181,14 @@ def from_fsm(f):
     return brz[f.initial][outside].reduce()
 
 
-def static(string, i, static):
+def static(string: str, i: int, static: str) -> int:
     j = i + len(static)
     if string[i:j] == static:
         return j
     raise nomatch
 
 
-def select_static(string, i, *statics):
+def select_static(string: str, i: int, *statics: str) -> Tuple[int, str]:
     for st in statics:
         j = i + len(st)
         if string[i:j] == st:
@@ -180,7 +196,7 @@ def select_static(string, i, *statics):
     raise nomatch
 
 
-def read_until(string, i, stop_char):
+def read_until(string: str, i: int, stop_char: str) -> Tuple[int, str]:
     start = i
     while True:
         if i >= len(string):
@@ -198,14 +214,14 @@ class lego:
     hosts documentation though.
     """
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name: str, value: object) -> NoReturn:
         """
         Lego pieces are immutable. It caused some pretty serious problems when
         I didn't have this.
         """
         raise Exception("This object is immutable.")
 
-    def to_fsm(self, alphabet):
+    def to_fsm(self, alphabet=None) -> fsm.fsm:
         """
         Return the present lego piece in the form of a finite state machine,
         as imported from the fsm module.
@@ -224,7 +240,7 @@ class lego:
         """
         raise NotImplementedError
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Render the present lego piece in the form of a regular expression.
         Some lego pieces may be created which cannot be rendered in this way.
@@ -233,7 +249,7 @@ class lego:
         raise NotImplementedError
 
     @classmethod
-    def match(cls, string, i=0):
+    def match(cls, string: str, i: int = 0) -> Tuple["lego", int]:
         """
         Start at index i in the supplied string and try to match one of the
         present class. Elementary recursive descent parsing with very little
@@ -243,7 +259,7 @@ class lego:
         raise NotImplementedError
 
     @classmethod
-    def parse(cls, string):
+    def parse(cls, string: str) -> "lego":
         """
         Parse the entire supplied string as an instance of the present class.
         Mainly for internal use in unit tests because it drops through to match()
@@ -255,7 +271,7 @@ class lego:
         return obj
 
     @reduce_after
-    def reduce(self):
+    def reduce(self) -> "lego":
         """
         The most important and algorithmically complex method. Takes the current
         lego piece and simplifies it in every way possible, returning a simpler
@@ -270,17 +286,17 @@ class lego:
         raise NotImplementedError
 
     @call_fsm
-    def concatenate(*legos):
+    def concatenate(*legos: "lego") -> "lego":
         """
             Concatenate a sequence of lego pieces, regardless of differing classes.
             Call using "a = b + c"
         """
 
-    def __add__(self, other):
+    def __add__(self, other: "lego") -> "lego":
         return self.concatenate(other)
 
     @call_fsm
-    def times(self, multiplier):
+    def times(self, multiplier: "multiplier") -> "lego":
         """
         Equivalent to repeated concatenation. Multiplier consists of a minimum
         and a maximum; maximum may be infinite (for Kleene star closure).
@@ -288,11 +304,11 @@ class lego:
         """
         raise NotImplementedError
 
-    def __mul__(self, multiplier):
+    def __mul__(self, multiplier: "multiplier") -> "lego":
         return self.times(multiplier)
 
     @call_fsm
-    def union(*legos):
+    def union(*legos: "lego") -> "lego":
         """
         Alternate between any two lego pieces, regardless of differing classes.
         Call using "a = b | c".
@@ -300,11 +316,11 @@ class lego:
         in turn when converting an FSM back to a regex.
         """
 
-    def __or__(self, other):
+    def __or__(self, other: "lego") -> "lego":
         return self.union(other)
 
     @call_fsm
-    def intersection(self, other):
+    def intersection(self, other: "lego") -> "lego":
         """
         Intersection function. Return a lego piece that can match any string
         that both self and other can match. Fairly elementary results relating
@@ -315,30 +331,30 @@ class lego:
         Call using "a = b & c"
         """
 
-    def __and__(self, other):
+    def __and__(self, other: "lego") -> "lego":
         return self.intersection(other)
 
     @call_fsm
-    def difference(*legos):
+    def difference(*legos: "lego") -> "lego":
         """
         Return a regular expression which matches any string which `self` matches
         but none of the strings which `other` matches.
         """
 
-    def __sub__(self, other):
+    def __sub__(self, other: "lego") -> "lego":
         return self.difference(other)
 
     @call_fsm
-    def symmetric_difference(*legos):
+    def symmetric_difference(*legos: "lego") -> "lego":
         """
         Return a regular expression matching only the strings recognised by
         `self` or `other` but not both.
         """
 
-    def __xor__(self, other):
+    def __xor__(self, other: "lego") -> "lego":
         return self.symmetric_difference(other)
 
-    def equivalent(self, other):
+    def equivalent(self, other: "lego") -> bool:
         """
         Two lego objects are equivalent if they recognise the same strings. Note
         that in the general case this is actually quite an intensive calculation,
@@ -358,7 +374,7 @@ class lego:
         raise NotImplementedError
 
     @call_fsm
-    def everythingbut(self):
+    def everythingbut(self) -> "lego":
         """
         Return a lego object which will match any string not matched by self,
         and which will not match any string matched by self.
@@ -367,7 +383,7 @@ class lego:
         thanks to FSM routines.
         """
 
-    def reversed(self):
+    def reversed(self) -> "lego":
         """
         Return a lego object which will match any string which, when reversed,
         self would match. E.g. if self matches "beer" then reversed(self) will
@@ -375,10 +391,10 @@ class lego:
         """
         raise NotImplementedError
 
-    def __reversed__(self):
+    def __reversed__(self) -> "lego":
         return self.reversed()
 
-    def empty(self):
+    def empty(self) -> bool:
         """
         Return False if there exists a string which the present lego piece
         can match. Return True if no such string exists. Examples of empty
@@ -386,17 +402,17 @@ class lego:
         """
         raise NotImplementedError
 
-    def matches(self, string):
+    def matches(self, string: str) -> bool:
         return self.to_fsm().accepts(string)
 
-    def __contains__(self, string):
+    def __contains__(self, string: str) -> bool:
         """
         This lets you use the syntax `"a" in pattern1` to see whether the string
         "a" is in the set of strings matched by `pattern1`.
         """
         return self.matches(string)
 
-    def strings(self, otherchar=None):
+    def strings(self, otherchar: str = None) -> Iterable[str]:
         """
         Each time next() is called on this iterator, a new string is returned
         which will the present lego piece can match. StopIteration is raised once
@@ -419,15 +435,15 @@ class lego:
                     otherchar if char == fsm.anything_else else char for char in string
                 ]
 
-            yield "".join(string)
+            yield "".join(string)  # type: ignore  # anything_else is gone by now.
 
-    def __iter__(self):
+    def __iter__(self) -> Iterable[str]:
         """
         This allows you to do `for string in pattern1` as a list comprehension!
         """
         return self.strings()
 
-    def cardinality(self):
+    def cardinality(self) -> int:
         """
         Consider the regular expression as a set of strings and return the
         cardinality of that set, or raise an OverflowError if there are infinitely
@@ -437,16 +453,10 @@ class lego:
         # pattern may allow duplicate routes, such as "a|a".
         return self.to_fsm().cardinality()
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.cardinality()
 
-    @call_fsm
-    def isdisjoint(self, other):
-        """
-        Treat `self` and `other` as sets of strings and see if they are disjoint
-        """
-
-    def copy(self):
+    def copy(self) -> "lego":
         """
         For completeness only, since `set.copy()` also exists. Regular expression
         objects are immutable, so I can see only very odd reasons to need this.
@@ -457,7 +467,7 @@ class lego:
         """For dictionaries"""
         raise NotImplementedError
 
-    def derive(self, string):
+    def derive(self, string: str) -> "lego":
         return from_fsm(self.to_fsm().derive(string))
 
 
@@ -472,24 +482,31 @@ class charclass(lego):
     combination functions.
     """
 
-    def __init__(self, chars=(), negateMe=False):
+    chars: FrozenSet[str]
+    negated: bool
+
+    def __init__(
+        self,
+        chars: Iterable[Union[str, fsm.anything_else_cls]] = (),
+        negateMe: bool = False,
+    ):
         chars = frozenset(chars)
         # chars should consist only of chars
         if fsm.anything_else in chars:
-            raise Exception("Can't put " + repr(fsm.anything_else) + " in a charclass")
+            raise Exception(f"Can't put {fsm.anything_else!r} in a charclass")
         self.__dict__["chars"] = chars
         self.__dict__["negated"] = negateMe
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         try:
-            return self.chars == other.chars and self.negated == other.negated
+            return self.chars == other.chars and self.negated == other.negated  # type: ignore
         except AttributeError:
             return False
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.chars, self.negated))
 
-    def times(self, multiplier):
+    def times(self, multiplier: "multiplier") -> Union["charclass", "mult"]:
         # e.g. "a" * {0,1} = "a?"
         if multiplier == one:
             return self
@@ -498,16 +515,17 @@ class charclass(lego):
     # These are the characters carrying special meanings when they appear "outdoors"
     # within a regular expression. To be interpreted literally, they must be
     # escaped with a backslash.
-    allSpecial = set("\\[]|().?*+{}")
+    allSpecial = frozenset("\\[]|().?*+{}")
 
     # These are the characters carrying special meanings when they appear INSIDE a
     # character class (delimited by square brackets) within a regular expression.
     # To be interpreted literally, they must be escaped with a backslash.
     # Notice how much smaller this class is than the one above; note also that the
     # hyphen and caret do NOT appear above.
-    classSpecial = set("\\[]^-")
+    classSpecial = frozenset("\\[]^-")
 
     # Shorthand codes for use inside charclasses e.g. [abc\d]
+    # TODO: change this to match Python 3 semantics for unicode regex
     w = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
     d = "0123456789"
     s = "\t\n\v\f\r "
@@ -517,7 +535,7 @@ class charclass(lego):
         s: "\\s",
     }
 
-    def __str__(self):
+    def __str__(self) -> str:
         # e.g. \w
         if self in shorthand.keys():
             return shorthand[self]
@@ -542,15 +560,15 @@ class charclass(lego):
             # return a hex escape sequence e.g. "\\x00". Note that this includes
             # tab and other characters already handled above
             if 0 <= ord(char) <= 0x1F or ord(char) == 0x7F:
-                return "\\x" + "{0:02x}".format(ord(char))
+                return "\\x" + "{:02x}".format(ord(char))
 
             return char
 
         # multiple characters (or possibly 0 characters)
         return "[" + self.escape() + "]"
 
-    def escape(self):
-        def escapeChar(char):
+    def escape(self) -> str:
+        def escapeChar(char: str) -> str:
             if char in charclass.classSpecial:
                 return "\\" + char
             if char in escapes.keys():
@@ -560,11 +578,11 @@ class charclass(lego):
             # return a hex escape sequence e.g. "\\x00". Note that this includes
             # tab and other characters already handled above
             if 0 <= ord(char) <= 0x1F or ord(char) == 0x7F:
-                return "\\x" + "{0:02x}".format(ord(char))
+                return "\\x" + "{:02x}".format(ord(char))
 
             return char
 
-        def recordRange():
+        def recordRange() -> str:
             # there's no point in putting a range when the whole thing is
             # 3 characters or fewer. "abc" -> "abc" but "abcd" -> "a-d"
             strs = [
@@ -603,7 +621,7 @@ class charclass(lego):
 
         return output
 
-    def to_fsm(self, alphabet=None):
+    def to_fsm(self, alphabet=None) -> fsm.fsm:
         if alphabet is None:
             alphabet = self.alphabet()
 
@@ -620,7 +638,7 @@ class charclass(lego):
             alphabet=alphabet, states={0, 1}, initial=0, finals={1}, map=map,
         )
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         string = ""
         if self.negated is True:
             string += "~"
@@ -631,26 +649,26 @@ class charclass(lego):
         return string
 
     @reduce_after
-    def reduce(self):
+    def reduce(self) -> "lego":
         # Charclasses cannot be reduced().
         return self
 
-    def concatenate(self, other):
+    def concatenate(self, other: "lego") -> "lego":
         return mult(self, one) + other
 
     def alphabet(self):
         return {fsm.anything_else} | self.chars
 
-    def empty(self):
+    def empty(self) -> bool:
         return len(self.chars) == 0 and not self.negated
 
     @classmethod
-    def match(cls, string, i=0):
+    def match(cls, string: str, i: int = 0) -> Tuple["lego", int]:
         if i >= len(string):
             raise nomatch
 
         # Turn e.g. "\\x40" into "@". Exactly two hex digits
-        def unescapeHex(string, i):
+        def unescapeHex(string: str, i: int) -> Tuple[str, int]:
             hex_digits = "0123456789AaBbCcDdEeFf"
 
             j = static(string, i, "\\x")
@@ -669,7 +687,7 @@ class charclass(lego):
             char = chr(codepoint)  # "@"
             return char, j
 
-        def matchInternalChar(string, i):
+        def matchInternalChar(string: str, i: int) -> Tuple[str, int]:
 
             # e.g. if we see "\\t", return "\t"
             for key in escapes.keys():
@@ -699,7 +717,7 @@ class charclass(lego):
 
             return char, j
 
-        def matchClassInterior1(string, i):
+        def matchClassInterior1(string: str, i: int) -> Tuple[str, int]:
 
             # Attempt 1: shorthand e.g. "\w"
             for key in charclass.shorthand:
@@ -729,7 +747,7 @@ class charclass(lego):
             # Attempt 3: just a character on its own
             return matchInternalChar(string, i)
 
-        def matchClassInterior(string, i):
+        def matchClassInterior(string: str, i: int) -> Tuple[str, int]:
             internals = ""
             try:
                 while True:
@@ -740,9 +758,9 @@ class charclass(lego):
             return internals, i
 
         # wildcard ".", "\\w", "\\d", etc.
-        for key in shorthand.keys():
+        for key, val in shorthand.items():
             try:
-                return key, static(string, i, shorthand[key])
+                return key, static(string, i, val)
             except nomatch:
                 pass
 
@@ -765,9 +783,9 @@ class charclass(lego):
             pass
 
         # e.g. if seeing "\\t", return "\t"
-        for key in escapes.keys():
+        for esc, val in escapes.items():
             try:
-                return charclass(key), static(string, i, escapes[key])
+                return charclass(esc), static(string, i, val)
             except nomatch:
                 pass
 
@@ -793,18 +811,18 @@ class charclass(lego):
         return charclass(char), i
 
     # set operations
-    def negate(self):
+    def negate(self) -> "lego":
         """
         Negate the current charclass. e.g. [ab] becomes [^ab]. Call
         using "charclass2 = ~charclass1"
         """
         return charclass(self.chars, negateMe=not self.negated)
 
-    def __invert__(self):
+    def __invert__(self) -> "lego":
         return self.negate()
 
-    def union(self, other):
-        try:
+    def union(self, other: "lego") -> "lego":
+        if isinstance(other, type(self)):
             # ¬A OR ¬B = ¬(A AND B)
             # ¬A OR B = ¬(A - B)
             # A OR ¬B = ¬(B - A)
@@ -820,11 +838,11 @@ class charclass(lego):
         # "other" lacks attribute "negated" or "chars"
         # "other" is not a charclass
         # Never mind!
-        except AttributeError:
+        else:
             return mult(self, one) | other
 
-    def intersection(self, other):
-        try:
+    def intersection(self, other: "lego") -> "lego":
+        if isinstance(other, type(self)):
             # ¬A AND ¬B = ¬(A OR B)
             # ¬A AND B = B - A
             # A AND ¬B = A - B
@@ -840,35 +858,37 @@ class charclass(lego):
         # "other" lacks attribute "negated" or "chars"
         # "other" is not a charclass
         # Never mind!
-        except AttributeError:
+        else:
             return mult(self, one) & other
 
-    def reversed(self):
+    def reversed(self) -> "lego":
         return self
 
-    def copy(self):
+    def copy(self) -> "lego":
         return charclass(self.chars.copy(), negateMe=self.negated)
 
 
 class bound:
     """An integer but sometimes also possibly infinite (None)"""
 
-    def __init__(self, v):
+    v: Optional[int]
+
+    def __init__(self, v: Optional[int]):
         if v is not None and v < 0:
-            raise Exception("Invalid bound: " + repr(v))
+            raise Exception(f"Invalid bound: {v!r}")
         self.__dict__["v"] = v
 
-    def __repr__(self):
-        return "bound(" + repr(self.v) + ")"
+    def __repr__(self) -> str:
+        return f"bound({self.v!r})"
 
-    def __str__(self):
-        if self == inf:
+    def __str__(self) -> str:
+        if self.v is None:
             # This only happens for an unlimited upper bound
             return ""
         return str(self.v)
 
     @classmethod
-    def match(cls, string, i=0):
+    def match(cls, string: str, i: int = 0) -> Tuple["bound", int]:
         def matchAnyOf(string, i, collection):
             for char in collection:
                 try:
@@ -900,13 +920,13 @@ class bound:
         # "" empty string = infinite bound as in "{4,}"
         return inf, i
 
-    def __eq__(self, other):
+    def __eq__(self, other: Any) -> bool:
         try:
-            return self.v == other.v
+            return self.v == other.v  # type: ignore
         except AttributeError:
             return False
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash(self.v)
 
     def __lt__(self, other):
@@ -940,7 +960,7 @@ class bound:
         """
         if other == inf:
             if self != inf:
-                raise Exception("Can't subtract " + repr(other) + " from " + repr(self))
+                raise Exception(f"Can't subtract {other!r} from {self!r}")
 
             # Infinity minus infinity is zero. This has to be true so that
             # we can for example subtract multiplier(bound(0), inf) from
@@ -965,39 +985,41 @@ class multiplier:
     "zero" to exist, which actually are quite useful in their own special way.
     """
 
-    def __init__(self, min, max):
-        if min == inf:
-            raise Exception("Minimum bound of a multiplier can't be " + repr(inf))
-        if min > max:
-            raise Exception(
-                "Invalid multiplier bounds: " + repr(min) + " and " + repr(max)
-            )
+    min: bound
+    max: bound
 
-        # More useful than "min" and "max" in many situations
-        # are "mandatory" and "optional".
-        mandatory = min
-        optional = max - min
+    def __init__(self, min: bound, max: bound) -> None:
+        if min == inf:
+            raise Exception(f"Minimum bound of a multiplier can't be {inf!r}")
+        if min > max:
+            raise Exception(f"Invalid multiplier bounds: {min!r} and {max!r}")
 
         self.__dict__["min"] = min
         self.__dict__["max"] = max
-        self.__dict__["mandatory"] = mandatory
-        self.__dict__["optional"] = optional
 
-    def __eq__(self, other):
+    @property
+    def mandatory(self) -> bound:
+        return self.min
+
+    @property
+    def optional(self) -> bound:
+        return self.max - self.min
+
+    def __eq__(self, other: object) -> bool:
         try:
-            return self.min == other.min and self.max == other.max
+            return self.min == other.min and self.max == other.max  # type: ignore
         except AttributeError:
             return False
 
-    def __hash__(self):
+    def __hash__(self) -> int:
         return hash((self.min, self.max))
 
-    def __repr__(self):
-        return "multiplier(" + repr(self.min) + ", " + repr(self.max) + ")"
+    def __repr__(self) -> str:
+        return f"multiplier({self.min!r}, {self.max!r})"
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.max == bound(0):
-            raise Exception("Can't serialise a multiplier with bound " + repr(self.max))
+            raise Exception(f"Can't serialise a multiplier with bound {self.max!r}")
         if self in symbolic.keys():
             return symbolic[self]
         if self.min == self.max:
@@ -1005,7 +1027,7 @@ class multiplier:
         return "{" + str(self.min) + "," + str(self.max) + "}"
 
     @classmethod
-    def match(cls, string, i=0):
+    def match(cls, string: str, i: int = 0) -> Tuple["multiplier", int]:
 
         # {2,3} or {2,}
         try:
@@ -1039,7 +1061,7 @@ class multiplier:
         raise nomatch
 
     @classmethod
-    def parse(cls, string):
+    def parse(cls: Type["multiplier"], string: str) -> "multiplier":
         """
         Parse the entire supplied string as an instance of the present class.
         Mainly for internal use in unit tests because it drops through to match()
@@ -1047,7 +1069,7 @@ class multiplier:
         """
         obj, i = cls.match(string, 0)
         if i != len(string):
-            raise Exception("Could not parse '" + string + "' beyond index " + str(i))
+            raise Exception(f"Could not parse {string!r} beyond index {i}")
         return obj
 
     def canmultiplyby(self, other):
@@ -1068,10 +1090,10 @@ class multiplier:
             or self.optional * other.mandatory + bound(1) >= self.mandatory
         )
 
-    def __mul__(self, other):
+    def __mul__(self: "multiplier", other: "multiplier") -> "multiplier":
         """Multiply this multiplier by another"""
         if not self.canmultiplyby(other):
-            raise Exception("Can't multiply " + repr(self) + " by " + repr(other))
+            raise Exception(f"Can't multiply {self!r} by {other!r}")
         return multiplier(self.min * other.min, self.max * other.max)
 
     def __add__(self, other):
