@@ -148,6 +148,7 @@ develop-eggs
 .hypothesis
 .pytest_cache
 .mypy_cache
+.coverage*
 
 # Installer logs
 pip-log.txt
