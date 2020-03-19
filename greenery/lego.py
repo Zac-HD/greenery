@@ -485,6 +485,29 @@ class charclass(lego):
     chars: FrozenSet[str]
     negated: bool
 
+    # These are the characters carrying special meanings when they appear "outdoors"
+    # within a regular expression. To be interpreted literally, they must be
+    # escaped with a backslash.
+    allSpecial = frozenset("\\[]|().?*+{}")
+
+    # These are the characters carrying special meanings when they appear INSIDE a
+    # character class (delimited by square brackets) within a regular expression.
+    # To be interpreted literally, they must be escaped with a backslash.
+    # Notice how much smaller this class is than the one above; note also that the
+    # hyphen and caret do NOT appear above.
+    classSpecial = frozenset("\\[]^-")
+
+    # Shorthand codes for use inside charclasses e.g. [abc\d]
+    # TODO: change this to match Python 3 semantics for unicode regex
+    w = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
+    d = "0123456789"
+    s = "\t\n\v\f\r "
+    shorthand = {
+        w: "\\w",
+        d: "\\d",
+        s: "\\s",
+    }
+
     def __init__(
         self,
         chars: Iterable[Union[str, fsm.anything_else_cls]] = (),
@@ -511,29 +534,6 @@ class charclass(lego):
         if multiplier == one:
             return self
         return mult(self, multiplier)
-
-    # These are the characters carrying special meanings when they appear "outdoors"
-    # within a regular expression. To be interpreted literally, they must be
-    # escaped with a backslash.
-    allSpecial = frozenset("\\[]|().?*+{}")
-
-    # These are the characters carrying special meanings when they appear INSIDE a
-    # character class (delimited by square brackets) within a regular expression.
-    # To be interpreted literally, they must be escaped with a backslash.
-    # Notice how much smaller this class is than the one above; note also that the
-    # hyphen and caret do NOT appear above.
-    classSpecial = frozenset("\\[]^-")
-
-    # Shorthand codes for use inside charclasses e.g. [abc\d]
-    # TODO: change this to match Python 3 semantics for unicode regex
-    w = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ_abcdefghijklmnopqrstuvwxyz"
-    d = "0123456789"
-    s = "\t\n\v\f\r "
-    shorthand = {
-        w: "\\w",
-        d: "\\d",
-        s: "\\s",
-    }
 
     def __str__(self) -> str:
         # e.g. \w
@@ -567,29 +567,32 @@ class charclass(lego):
         # multiple characters (or possibly 0 characters)
         return "[" + self.escape() + "]"
 
+    @staticmethod
+    def escapeChar(char: str) -> str:
+        if char in charclass.classSpecial:
+            return "\\" + char
+        if char in escapes.keys():
+            return escapes[char]
+
+        # If char is an ASCII control character, don't print it directly,
+        # return a hex escape sequence e.g. "\\x00". Note that this includes
+        # tab and other characters already handled above
+        if 0 <= ord(char) <= 0x1F or ord(char) == 0x7F:
+            return "\\x" + "{:02x}".format(ord(char))
+
+        return char
+
     def escape(self) -> str:
-        def escapeChar(char: str) -> str:
-            if char in charclass.classSpecial:
-                return "\\" + char
-            if char in escapes.keys():
-                return escapes[char]
-
-            # If char is an ASCII control character, don't print it directly,
-            # return a hex escape sequence e.g. "\\x00". Note that this includes
-            # tab and other characters already handled above
-            if 0 <= ord(char) <= 0x1F or ord(char) == 0x7F:
-                return "\\x" + "{:02x}".format(ord(char))
-
-            return char
-
         def recordRange() -> str:
             # there's no point in putting a range when the whole thing is
             # 3 characters or fewer. "abc" -> "abc" but "abcd" -> "a-d"
             strs = [
                 # "ab" or "abc" or "abcd"
-                "".join(escapeChar(char) for char in currentRange),
+                "".join(self.escapeChar(char) for char in currentRange),
                 # "a-b" or "a-c" or "a-d"
-                escapeChar(currentRange[0]) + "-" + escapeChar(currentRange[-1]),
+                self.escapeChar(currentRange[0])
+                + "-"
+                + self.escapeChar(currentRange[-1]),
             ]
             return sorted(strs, key=lambda str: len(str))[0]
 
@@ -929,31 +932,31 @@ class bound:
     def __hash__(self) -> int:
         return hash(self.v)
 
-    def __lt__(self, other):
+    def __lt__(self, other: "bound") -> bool:
         if self == inf:
             return False
         if other == inf:
             return True
-        return self.v < other.v
+        return self.v < other.v  # type: ignore
 
-    def __ge__(self, other):
+    def __ge__(self, other: "bound") -> bool:
         return not self < other
 
-    def __mul__(self, other):
+    def __mul__(self, other: "bound") -> "bound":
         """Multiply this bound by another"""
         if self == bound(0) or other == bound(0):
             return bound(0)
         if self == inf or other == inf:
             return inf
-        return bound(self.v * other.v)
+        return bound(self.v * other.v)  # type: ignore
 
-    def __add__(self, other):
+    def __add__(self, other: "bound") -> "bound":
         """Add this bound to another"""
         if self == inf or other == inf:
             return inf
-        return bound(self.v + other.v)
+        return bound(self.v + other.v)  # type: ignore
 
-    def __sub__(self, other):
+    def __sub__(self, other: "bound") -> "bound":
         """
         Subtract another bound from this one.
         Caution: this operation is not meaningful for all bounds.
@@ -968,9 +971,9 @@ class bound:
             return bound(0)
         if self == inf:
             return self
-        return bound(self.v - other.v)
+        return bound(self.v - other.v)  # type: ignore
 
-    def copy(self):
+    def copy(self) -> "bound":
         return bound(self.v)
 
 
@@ -1100,7 +1103,7 @@ class multiplier:
         """Add two multipliers together"""
         return multiplier(self.min + other.min, self.max + other.max)
 
-    def __sub__(self, other):
+    def __sub__(self, other: "multiplier") -> "multiplier":
         """
         Subtract another multiplier from this one.
         Caution: multipliers are not totally ordered.
@@ -1237,7 +1240,7 @@ class mult(lego):
         return mult(nothing, zero)
 
     def intersection(self, other):
-        if hasattr(other, "chars"):
+        if isinstance(other, charclass):
             other = mult(other, one)
 
         # If two mults are given which have a common multiplicand, the shortcut
@@ -1414,7 +1417,7 @@ class conc(lego):
     To express the empty string, use an empty conc, conc().
     """
 
-    def __init__(self, *mults):
+    def __init__(self, *mults: mult):
         self.__dict__["mults"] = tuple(mults)
 
     def __eq__(self, other):
@@ -1652,7 +1655,7 @@ class pattern(lego):
     This new subpattern again consists of two concs: "ghi" and "jkl".
     """
 
-    def __init__(self, *concs):
+    def __init__(self, *concs: conc):
         self.__dict__["concs"] = frozenset(concs)
 
     def __eq__(self, other):
